@@ -1,0 +1,310 @@
+type element. (*element in finite field or group*)
+free Sec:channel [private].		(*secure channel*)
+free Pub:channel.			(*public channel*)
+
+
+(*-------Names & Variables-------*)
+(*elements of cyclic group*)
+const P:element.
+
+(*1 . master public key*)
+free Ppub:element.
+
+(*2. master secret key*)
+free s:element [private].
+
+(*3. vehicles' private key*)
+free xv:element [private].
+free yv:element [private].
+free theta:element [private].
+
+
+
+(*4. RSUs' private key*)
+free x1:element [private].
+free y1:element [private].
+free x2:element [private].
+free y2:element [private].
+free x3:element [private].
+free y3:element [private].
+free theta':element [private].
+
+
+(*5. vehicles' public key*)
+free Xv:element.
+free Rv:element.
+
+
+(*6. RSUs' public key*)
+free X1:element.
+free R1:element.
+free X2:element.
+free R2:element.
+free X3:element.
+free R3:element.
+
+(*7. vehicle & identity*)
+free IDv:bitstring.
+
+(*8. RSU & identity*)
+free ID1:bitstring.
+free ID2:bitstring.
+free ID3:bitstring.
+
+
+
+(*-------Constructors, Destructors & Equations------*)
+
+
+fun H1(bitstring,element,element,element):element.
+fun H2(element):bitstring.
+fun H3(bitstring,element,element,element,element,element):element.
+fun H4(bitstring,element,element,element,element,element):element.
+fun H5(bitstring,element,element,element,element,element):element.
+fun H6(bitstring):bitstring.
+fun Enc(element,bitstring):bitstring.
+fun Dec(element,bitstring):bitstring.
+
+
+fun Mult(element,element):element.  (*Multiplication in group: G×G*)
+fun Add(element,element):element.	 (*Addition*)
+fun Powzn(element,element):element. 	(*g^s:Powzn(g,s)*)
+fun XOR(bitstring,bitstring):bitstring.
+fun Mult1(bitstring,bitstring):element.
+fun Mult2(element,bitstring):element.
+fun And(bitstring,bitstring):bitstring.
+fun Sum(bitstring,bitstring,bitstring):bitstring.
+
+(*reduc forall kB:element ,kA:element ,m:bitstring; Dec(kB,Enc(kA,m))=m.*)
+
+(*Event*)
+event beginVehicle(bitstring).
+event endVehicle(bitstring).
+event beginRSU(bitstring).
+event endRSU(bitstring).
+
+
+(*Queries*)
+query attacker(theta).
+query attacker(theta').
+query attacker(x1).
+query attacker(y1).
+query attacker(x2).
+query attacker(y2).
+query attacker(x3).
+query attacker(y3).
+query id:bitstring; inj-event (endVehicle(id)) ==> inj-event(beginRSU(id)).
+query id:bitstring; inj-event (endRSU(id)) ==> inj-event(beginVehicle(id)).
+
+(*Processes*)
+(*KGC Processes*)
+let vehicleReg=
+	in(Sec,(IDv:bitstring));
+	
+	new rv:element;
+	let Xv = Powzn(P,xv) in
+	let Rv = Powzn(P,rv) in
+	let yv= Add(rv,Mult(s,H1(IDv,Xv,Rv,Ppub))) in		
+	out(Sec,(xv,yv));
+	0.
+
+let RSUReg=
+	in(Sec,(ID1:bitstring,ID2:bitstring,ID3:bitstring));
+	
+	new r1:element;
+	let X1 = Powzn(P,x1) in
+	let R1 = Powzn(P,r1) in
+	let y1= Add(r1,Mult(s,H1(ID1,X1,R1,Ppub))) in
+	new r2:element;
+	let X2 = Powzn(P,x2) in
+	let R2 = Powzn(P,r2) in
+	let y2= Add(r2,Mult(s,H1(ID2,X2,R2,Ppub))) in
+	new r3:element;
+	let X3 = Powzn(P,x3) in
+	let R3 = Powzn(P,r3) in
+	let y3= Add(r3,Mult(s,H1(ID3,X3,R3,Ppub))) in		
+	out(Sec,(x1,y1,x2,y2,x3,y3));
+	0.
+
+let KGC=vehicleReg | RSUReg.
+
+
+(*vehicle Processes*)
+let vehicle=
+	(*Registration*)
+	out(Sec,(IDv));
+	in(Sec,(xv:element,yv:element));
+	(*Login & Authentication*)
+	event beginVehicle(IDv);
+	new tv:element;
+	new a0:element;
+	new a1:element;
+	new a2:element;
+	new theta:element;
+	
+	let Tv= Powzn(P,tv) in 
+	let h11= H1(ID1,X1,R1,Ppub) in
+	let Q1=Powzn(Add(X1,Add(R1,Powzn(Ppub,h11))),Add(xv,Add(yv,tv))) in
+	let k1=H2(Q1) in
+	let h12= H1(ID2,X2,R2,Ppub) in
+	let Q2=Powzn(Add(X2,Add(R2,Powzn(Ppub,h12))),Add(xv,Add(yv,tv))) in
+	let k2=H2(Q2) in
+	let h13= H1(ID3,X3,R3,Ppub) in
+	let Q3=Powzn(Add(X3,Add(R3,Powzn(Ppub,h13))),Add(xv,Add(yv,tv))) in
+	let k3=H2(Q3) in
+	
+	let theta = Add(a0,Add(Mult2(a1,k1),Mult(a2,Mult1(k1,k1)))) in
+	let h3v= H3(IDv,Tv,theta,a0,a1,a2) in
+	let h4v= H4(IDv,Tv,theta,a0,a1,a2) in
+	let h5v= H5(IDv,Tv,theta,a0,a1,a2) in
+
+	let sigema = Add(Mult(h4v,xv),Add(Mult(h5v,yv),Mult(h3v,Add(theta,tv)))) in
+	
+	
+
+	out(Pub,(a0,a1,a2,Tv,sigema));
+	
+	
+	
+	
+	in(Pub,(sigema1:element,T1:element,sigema2:element,T2:element,sigema3:element,T3:element));
+	let h31'= H3(ID1,T1,theta,a0,a1,a2) in
+	let h41'= H4(ID1,T1,theta,a0,a1,a2) in
+	let h51'= H5(ID1,T1,theta,a0,a1,a2) in
+	let h32'= H3(ID2,T2,theta,a0,a1,a2) in
+	let h42'= H4(ID2,T2,theta,a0,a1,a2) in
+	let h52'= H5(ID2,T2,theta,a0,a1,a2) in	
+	let h33'= H3(ID3,T3,theta,a0,a1,a2) in
+	let h43'= H4(ID3,T3,theta,a0,a1,a2) in
+	let h53'= H5(ID3,T3,theta,a0,a1,a2) in
+	
+	if(Powzn(P,sigema1) = Add(Powzn(h41',X1),Add(Powzn(h31',Add(T1,Powzn(theta,P))),Powzn(h51',Add(R1,Powzn(h11,Ppub)))))) then 
+	if(Powzn(P,sigema1) = Add(Powzn(h42',X2),Add(Powzn(h32',Add(T2,Powzn(theta,P))),Powzn(h52',Add(R2,Powzn(h12,Ppub)))))) then
+	if(Powzn(P,sigema1) = Add(Powzn(h43',X3),Add(Powzn(h33',Add(T3,Powzn(theta,P))),Powzn(h53',Add(R3,Powzn(h13,Ppub))))) ) then
+	
+	new m1:bitstring;
+	new m2:bitstring;
+	new m3:bitstring;
+	let c1=XOR(m1,k1) in
+	let c2=XOR(m2,k2) in
+	let c3=XOR(m3,k3) in
+	let C =Sum(And(H6(k1),c1),And(H6(k2),c2),And(H6(k3),c3)) in
+	let S = Enc(theta,C) in
+	out(Pub,(a0,a1,a2,S));
+	
+
+
+	
+	
+	
+	event endVehicle(IDv)
+	else 0.
+
+
+(*RSU Processes*)
+let RSU1=
+	(*Registration*)
+	out(Sec,(ID1));
+	in(Sec,(x1:element,y1:element));
+	(*login & Authentication*)
+
+	event beginRSU(ID1);
+	in(Pub,(a0:element,a1:element,a2:element,Tv:element,sigema:element));
+	let hv'= H1(IDv,Xv,Rv,Ppub) in	
+	let Q1=Powzn(Add(x1,y1),Add(Xv,Add(Rv,Add(Tv,Powzn(hv',Ppub))))) in
+	let k1'=H2(Q1) in
+	let theta'=Add(a0,Add(Mult2(a1,k1'),Mult(a2,Mult1(k1',k1')))) in
+	let h31= H3(IDv,Tv,theta',a0,a1,a2) in
+	let h41= H4(IDv,Tv,theta',a0,a1,a2) in
+	let h51= H5(IDv,Tv,theta',a0,a1,a2) in
+
+	if(Powzn(P,sigema) = Add(Powzn(h41,Xv),Add(Powzn(h31,Add(Tv,Powzn(theta',P))),Powzn(h51,Add(Rv,Powzn(hv',Ppub)))))) then
+	new t1:element;
+	let T1= Powzn(P,t1) in 
+
+	let sigema1 = Add(Mult(h41,x1),Add(Mult(h51,y1),Mult(h31,Add(theta',t1)))) in
+	
+	out(Pub,(sigema1,T1));
+
+	
+	in(Pub,(a0:element,a1:element,a2:element,S:bitstring));
+	
+	let C' = Dec(theta',S) in
+	
+	
+	
+	
+	
+
+	event endRSU(ID1)
+	else 0.
+
+let RSU2=
+	(*Registration*)
+	out(Sec,(ID2));
+	in(Sec,(x2:element,y2:element));
+	(*login & Authentication*)
+
+	event beginRSU(ID2);
+	in(Pub,(a0:element,a1:element,a2:element,Tv:element,sigema:element));
+	let hv'= H1(IDv,Xv,Rv,Ppub) in	
+	let Q2=Powzn(Add(x2,y2),Add(Xv,Add(Rv,Add(Tv,Powzn(hv',Ppub))))) in
+	let k2'=H2(Q2) in
+	let theta'=Add(a0,Add(Mult2(a1,k2'),Mult(a2,Mult1(k2',k2')))) in
+	let h32= H3(IDv,Tv,theta',a0,a1,a2) in
+	let h42= H4(IDv,Tv,theta',a0,a1,a2) in
+	let h52= H5(IDv,Tv,theta',a0,a1,a2) in
+
+	if(Powzn(P,sigema) = Add(Powzn(h42,Xv),Add(Powzn(h32,Add(Tv,Powzn(theta',P))),Powzn(h52,Add(Rv,Powzn(hv',Ppub)))))) then
+	new t2:element;
+	let T2= Powzn(P,t2) in 
+
+	let sigema2 = Add(Mult(h42,x2),Add(Mult(h52,y2),Mult(h32,Add(theta',t2)))) in
+	
+	out(Pub,(sigema2,T2));
+	in(Pub,(a0:element,a1:element,a2:element,S:bitstring));
+	
+	let C' = Dec(theta',S) in
+	
+	
+	
+
+	event endRSU(ID2)
+	else 0.
+
+let RSU3=
+	(*Registration*)
+	out(Sec,(ID3));
+	in(Sec,(x3:element,y3:element));
+	(*login & Authentication*)
+
+	event beginRSU(ID3);
+	in(Pub,(a0:element,a1:element,a2:element,Tv:element,sigema:element));
+	let hv'= H1(IDv,Xv,Rv,Ppub) in	
+	let Q3=Powzn(Add(x3,y3),Add(Xv,Add(Rv,Add(Tv,Powzn(hv',Ppub))))) in
+	let k3'=H2(Q3) in
+	let theta'=Add(a0,Add(Mult2(a1,k3'),Mult(a2,Mult1(k3',k3')))) in
+	let h33= H3(IDv,Tv,theta',a0,a1,a2) in
+	let h43= H4(IDv,Tv,theta',a0,a1,a2) in
+	let h53= H5(IDv,Tv,theta',a0,a1,a2) in
+
+	if(Powzn(P,sigema) = Add(Powzn(h43,Xv),Add(Powzn(h33,Add(Tv,Powzn(theta',P))),Powzn(h53,Add(Rv,Powzn(hv',Ppub)))))) then
+	new t3:element;
+	let T3= Powzn(P,t3) in 
+
+	let sigema3 = Add(Mult(h43,x3),Add(Mult(h53,y3),Mult(h33,Add(theta',t3)))) in
+	
+	out(Pub,(sigema3,T3));
+	in(Pub,(a0:element,a1:element,a2:element,S:bitstring));
+	
+	let C' = Dec(theta',S) in
+	
+	
+	
+
+	event endRSU(ID3)
+	else 0.
+
+(*Processes Replication*)
+process 
+(!RSU3 | !RSU2 | !RSU1 | !vehicle)
